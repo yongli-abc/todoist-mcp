@@ -121,10 +121,17 @@ def get_task(task_id: str) -> str:
     return "\n".join(lines)
 
 
+def _strip_duration_prefix(text: str) -> str:
+    """Remove a leading ~Xmin or ~Xd duration prefix from a description."""
+    import re
+    return re.sub(r"^~\d+(min|d)( \| )?", "", text)
+
+
 @mcp.tool()
-def update_task(task_id: str, content: str = "", due_string: str = "", priority: str = "", description: str = "", duration: int = 0, duration_unit: str = "minute") -> str:
+def update_task(task_id: str, content: str = "", due_string: str = "", priority: str = "", description: str = "", duration: int = 0, duration_unit: str = "minute", remove_duration: bool = False) -> str:
     """Update a task's content, due date, priority, description, or duration.
-    duration: estimated time (integer). duration_unit: 'minute' or 'day'."""
+    duration: estimated time (integer). duration_unit: 'minute' or 'day'.
+    remove_duration: set True to clear the duration entirely."""
     fields = {}
     if content:
         fields["content"] = content
@@ -133,13 +140,25 @@ def update_task(task_id: str, content: str = "", due_string: str = "", priority:
     if priority:
         p_key = priority.upper() if not priority.isdigit() else f"P{priority}"
         fields["priority"] = todoist.LABEL_PRIORITY.get(p_key, 1)
-    if description:
+
+    if duration or remove_duration:
+        task = todoist.get_task(task_id)
+        existing_desc = _strip_duration_prefix(task.get("description") or "")
+        # description arg (if provided) overrides existing body
+        body = description if description else existing_desc
+        if remove_duration:
+            fields["duration"] = None
+            fields["description"] = body
+        else:
+            dur_label = f"{duration}min" if duration_unit == "minute" else f"{duration}d"
+            fields["duration"] = duration
+            fields["duration_unit"] = duration_unit
+            fields["description"] = f"~{dur_label}" + (f" | {body}" if body else "")
+    elif description:
         fields["description"] = description
-    if duration:
-        fields["duration"] = duration
-        fields["duration_unit"] = duration_unit
+
     if not fields:
-        return "Nothing to update — provide at least one of content, due_string, priority, description, duration."
+        return "Nothing to update — provide at least one of content, due_string, priority, description, duration, remove_duration."
     todoist.update_task(task_id, **fields)
     return f"Updated task {task_id}."
 
