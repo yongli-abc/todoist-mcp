@@ -89,6 +89,9 @@ def create_task(
     project_id = _resolve_project(project_name)
     p = todoist.LABEL_PRIORITY.get(priority.upper(), 1)
     section_id = _resolve_section(section_name, project_id) if section_name else None
+    if duration:
+        dur_label = f"{duration}min" if duration_unit == "minute" else f"{duration}d"
+        description = f"~{dur_label}" + (f" | {description}" if description else "")
     task = todoist.create_task(
         content=content,
         project_id=project_id,
