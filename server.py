@@ -80,9 +80,12 @@ def create_task(
     description: str = "",
     parent_task_id: str = "",
     section_name: str = "",
+    duration: int = 0,
+    duration_unit: str = "minute",
 ) -> str:
     """Create a new task. priority: P1/P2/P3/P4. due_string: natural language e.g. 'tomorrow', 'next Monday'.
-    parent_task_id: make this a subtask of another task. section_name: place in a section within the project."""
+    parent_task_id: make this a subtask of another task. section_name: place in a section within the project.
+    duration: estimated time (integer). duration_unit: 'minute' or 'day'."""
     project_id = _resolve_project(project_name)
     p = todoist.LABEL_PRIORITY.get(priority.upper(), 1)
     section_id = _resolve_section(section_name, project_id) if section_name else None
@@ -94,6 +97,8 @@ def create_task(
         due_string=due_string or None,
         priority=p,
         description=description or None,
+        duration=duration or None,
+        duration_unit=duration_unit,
     )
     return f"Created: {task['id']} | {task['content']}"
 
@@ -114,21 +119,24 @@ def get_task(task_id: str) -> str:
 
 
 @mcp.tool()
-def update_task(task_id: str, content: str = "", due_string: str = "", priority: str = "", description: str = "") -> str:
-    """Update a task's content, due date, priority, or description."""
+def update_task(task_id: str, content: str = "", due_string: str = "", priority: str = "", description: str = "", duration: int = 0, duration_unit: str = "minute") -> str:
+    """Update a task's content, due date, priority, description, or duration.
+    duration: estimated time (integer). duration_unit: 'minute' or 'day'."""
     fields = {}
     if content:
         fields["content"] = content
     if due_string:
         fields["due_string"] = due_string
     if priority:
-        # Accept "P2" or "2" — numeric string maps to label first
         p_key = priority.upper() if not priority.isdigit() else f"P{priority}"
         fields["priority"] = todoist.LABEL_PRIORITY.get(p_key, 1)
     if description:
         fields["description"] = description
+    if duration:
+        fields["duration"] = duration
+        fields["duration_unit"] = duration_unit
     if not fields:
-        return "Nothing to update — provide at least one of content, due_string, priority, description."
+        return "Nothing to update — provide at least one of content, due_string, priority, description, duration."
     todoist.update_task(task_id, **fields)
     return f"Updated task {task_id}."
 

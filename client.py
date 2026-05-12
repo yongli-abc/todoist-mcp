@@ -95,6 +95,8 @@ def create_task(
     due_string: str | None = None,
     priority: int = 1,
     description: str | None = None,
+    duration: int | None = None,
+    duration_unit: str = "minute",
 ) -> dict:
     body = {"content": content, "priority": priority}
     if project_id:
@@ -107,6 +109,9 @@ def create_task(
         body["due_string"] = due_string
     if description:
         body["description"] = description
+    if duration:
+        body["duration"] = duration
+        body["duration_unit"] = duration_unit
     resp = requests.post(f"{BASE_URL}/tasks", headers=_headers(), json=body)
     resp.raise_for_status()
     return resp.json()
@@ -254,4 +259,9 @@ def fmt_task(t: dict) -> str:
     due = t["due"]["date"] if t.get("due") else "-"
     p = PRIORITY_LABEL.get(t["priority"], "?")
     project = t.get("project_id", "")
-    return f"[{p}] {due:12} | {t['id']} | {t['content'][:70]} (project:{project})"
+    dur = ""
+    if t.get("duration"):
+        amount = t["duration"]["amount"]
+        unit = t["duration"]["unit"]
+        dur = f" ~{amount}{'m' if unit == 'minute' else 'd'}"
+    return f"[{p}] {due:12} | {t['id']} | {t['content'][:70]}{dur} (project:{project})"
