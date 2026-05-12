@@ -90,6 +90,8 @@ def get_task(task_id: str) -> dict:
 def create_task(
     content: str,
     project_id: str | None = None,
+    parent_id: str | None = None,
+    section_id: str | None = None,
     due_string: str | None = None,
     priority: int = 1,
     description: str | None = None,
@@ -97,6 +99,10 @@ def create_task(
     body = {"content": content, "priority": priority}
     if project_id:
         body["project_id"] = project_id
+    if parent_id:
+        body["parent_id"] = parent_id
+    if section_id:
+        body["section_id"] = section_id
     if due_string:
         body["due_string"] = due_string
     if description:
@@ -122,19 +128,126 @@ def delete_task(task_id: str) -> None:
     resp.raise_for_status()
 
 
-def move_task(task_id: str, project_id: str) -> None:
+def move_task(
+    task_id: str,
+    project_id: str | None = None,
+    parent_id: str | None = None,
+    section_id: str | None = None,
+) -> None:
+    body = {}
+    if project_id:
+        body["project_id"] = project_id
+    if parent_id:
+        body["parent_id"] = parent_id
+    if section_id:
+        body["section_id"] = section_id
+    resp = requests.post(f"{BASE_URL}/tasks/{task_id}/move", headers=_headers(), json=body)
+    resp.raise_for_status()
+
+
+def get_comments(task_id: str) -> list[dict]:
+    resp = requests.get(f"{BASE_URL}/comments", headers=_headers(), params={"task_id": task_id})
+    resp.raise_for_status()
+    return resp.json().get("results", [])
+
+
+def delete_comment(comment_id: str) -> None:
+    resp = requests.delete(f"{BASE_URL}/comments/{comment_id}", headers=_headers())
+    resp.raise_for_status()
+
+
+def add_comment(task_id: str, content: str) -> dict:
     resp = requests.post(
-        f"{BASE_URL}/tasks/{task_id}/move",
+        f"{BASE_URL}/comments",
         headers=_headers(),
-        json={"project_id": project_id},
+        json={"task_id": task_id, "content": content},
     )
     resp.raise_for_status()
+    return resp.json()
 
 
 def get_projects() -> list[dict]:
-    resp = requests.get(f"{BASE_URL}/projects", headers=_headers())
+    projects = []
+    cursor = None
+    while True:
+        params = {"cursor": cursor} if cursor else {}
+        resp = requests.get(f"{BASE_URL}/projects", headers=_headers(), params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        projects.extend(data.get("results", []))
+        cursor = data.get("next_cursor")
+        if not cursor:
+            break
+    return projects
+
+
+def find_project(name: str) -> dict | None:
+    """Find project by name — static map first, then live API."""
+    if name in PROJECTS:
+        return {"id": PROJECTS[name], "name": name}
+    for p in get_projects():
+        if p["name"].lower() == name.lower():
+            return p
+    return None
+
+
+def create_project(name: str, parent_id: str | None = None) -> dict:
+    body = {"name": name}
+    if parent_id:
+        body["parent_id"] = parent_id
+    resp = requests.post(f"{BASE_URL}/projects", headers=_headers(), json=body)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def update_project(project_id: str, **fields) -> dict:
+    resp = requests.post(f"{BASE_URL}/projects/{project_id}", headers=_headers(), json=fields)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def delete_project(project_id: str) -> None:
+    resp = requests.delete(f"{BASE_URL}/projects/{project_id}", headers=_headers())
+    resp.raise_for_status()
+
+
+def archive_project(project_id: str) -> None:
+    resp = requests.post(f"{BASE_URL}/projects/{project_id}/archive", headers=_headers())
+    resp.raise_for_status()
+
+
+def get_sections(project_id: str | None = None) -> list[dict]:
+    params = {"project_id": project_id} if project_id else {}
+    resp = requests.get(f"{BASE_URL}/sections", headers=_headers(), params=params)
     resp.raise_for_status()
     return resp.json().get("results", [])
+
+
+def delete_section(section_id: str) -> None:
+    resp = requests.delete(f"{BASE_URL}/sections/{section_id}", headers=_headers())
+    resp.raise_for_status()
+
+
+def create_section(name: str, project_id: str) -> dict:
+    resp = requests.post(
+        f"{BASE_URL}/sections", headers=_headers(), json={"name": name, "project_id": project_id}
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_completed_tasks(project_id: str | None = None, since: str | None = None, until: str | None = None, limit: int = 50) -> list[dict]:
+    """Fetch completed tasks via Sync API. since/until: ISO date strings e.g. '2026-04-13'."""
+    params: dict = {"limit": limit}
+    if project_id:
+        params["project_id"] = project_id
+    if since:
+        params["since"] = f"{since}T00:00:00"
+    if until:
+        params["until"] = f"{until}T23:59:59"
+    resp = requests.get(f"{BASE_URL}/tasks/completed", headers=_headers(), params=params)
+    resp.raise_for_status()
+    return resp.json().get("items", [])
 
 
 def fmt_task(t: dict) -> str:
